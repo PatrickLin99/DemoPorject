@@ -75,11 +75,39 @@ fun ComponentWebview(url: String) {
     var isWebViewLoaded by remember { mutableStateOf(false) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     val hasScreenshot = demoViewModel.screenShot.containsKey(url)
-
     val config = LocalConfiguration.current
 
     Box(modifier = Modifier.fillMaxSize()) {
-        if (hasScreenshot) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { context ->
+                WebView(context).apply {
+                    settings.javaScriptEnabled = true
+                    webViewClient = WebViewClient()
+                    webChromeClient = object : WebChromeClient() {
+                        override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                            super.onProgressChanged(view, newProgress)
+                            if (newProgress == 100) {
+                                isWebViewLoaded = true
+                                view?.postDelayed({
+                                    getWebViewScreenshot(
+                                        view,
+                                        config.screenWidthDp,
+                                        config.screenHeightDp
+                                    )?.let {
+                                        demoViewModel.screenShot[url] = it
+                                    }
+                                }, 500)
+                            }
+                        }
+                    }
+                    loadUrl(url)
+                    webViewRef = this
+                }
+            }
+        )
+
+        if (hasScreenshot && !isWebViewLoaded) {
             demoViewModel.screenShot[url]?.let { bitmap ->
                 ConstraintLayout {
                     val (img, note) = createRefs()
@@ -93,7 +121,7 @@ fun ComponentWebview(url: String) {
                             },
                         bitmap = bitmap.asImageBitmap(),
                         contentDescription = "Cached Screenshot",
-                        contentScale = ContentScale.Fit
+                        contentScale = ContentScale.Fit,
                     )
                     Text(
                         modifier = Modifier.constrainAs(note) {
@@ -101,50 +129,22 @@ fun ComponentWebview(url: String) {
                             end.linkTo(parent.end)
                             bottom.linkTo(parent.bottom)
                         },
-                        text = "This is a Screenshot", color = Color.DarkGray, fontSize = 20.sp
+                        text = "This is a Screenshot",
+                        color = Color.DarkGray,
+                        fontSize = 20.sp
                     )
                 }
             }
-        } else {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { context ->
-                    WebView(context).apply {
-                        settings.javaScriptEnabled = true
-                        webViewClient = WebViewClient()
-                        webChromeClient = object : WebChromeClient() {
-                            override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                                super.onProgressChanged(view, newProgress)
-                                if (newProgress == 100) {
-                                    isWebViewLoaded = true
-                                    // 延遲一下確保頁面完全載入
-                                    view?.postDelayed({
-                                        getWebViewScreenshot(
-                                            view,
-                                            config.screenWidthDp,
-                                            config.screenHeightDp
-                                        )?.let {
-                                            demoViewModel.screenShot[url] = it
-                                        }
-                                    }, 500)
-                                }
-                            }
-                        }
-                        loadUrl(url)
-                        webViewRef = this
-                    }
-                }
-            )
+        }
 
-            if (!isWebViewLoaded) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.White),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = Color.DarkGray)
-                }
+        if (!isWebViewLoaded && !hasScreenshot) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.White),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = Color.DarkGray)
             }
         }
     }
@@ -163,7 +163,6 @@ private fun getWebViewScreenshot(
     view.draw(canvas)
     bitmap
 }
-
 
 @Composable
 fun DemoLoadingScreen() {
